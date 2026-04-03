@@ -1,101 +1,412 @@
-import Image from "next/image";
+'use client'
+import { useEffect, useState } from 'react'
+import { BarChart, Bar, Cell, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
+import jsPDF from 'jspdf'
+
+interface StockData {
+  symbol: string
+  name: string
+  sector: string
+  price: number
+  change_percent: number
+  volume: number
+}
+
+interface MacroData {
+  indicator_name: string
+  value: number
+  unit: string
+  period: string
+  source: string
+}
+
+interface AIInsight {
+  sector: string
+  summary: string
+  risk_level: string
+}
+
+interface ChatMessage {
+  role: string
+  content: string
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [stocks, setStocks] = useState<StockData[]>([])
+  const [macro, setMacro] = useState<MacroData[]>([])
+  const [insights, setInsights] = useState<AIInsight[]>([])
+  const [loading, setLoading] = useState(true)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [lastUpdated, setLastUpdated] = useState('')
+  const [lang, setLang] = useState<'EN' | 'HU'>('EN')
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatLoading, setChatLoading] = useState(false)
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const t = {
+    EN: {
+      title: 'HU-Market Intelligence',
+      subtitle: 'AI-powered financial analytics for the Hungarian market',
+      refresh: 'Refresh Market Data',
+      generateAI: 'Generate AI Insights',
+      exportPDF: 'Export PDF Report',
+      generating: 'Generating...',
+      loading: 'Loading...',
+      bet: 'Budapest Stock Exchange (BÉT)',
+      macro: 'NBH Macro Indicators',
+      ai: 'AI Sector Risk Analysis',
+      chat: 'Ask the AI Analyst',
+      chatPlaceholder: 'Ask about the Hungarian market...',
+      chatHint: 'e.g. "What is the risk for OTP Bank right now?" or "How does inflation affect Hungarian SMEs?"',
+      thinking: 'Analyst is thinking...',
+      send: 'Send',
+      updated: 'Last updated',
+      volume: 'Vol',
+    },
+    HU: {
+      title: 'Magyar Piaci Intelligencia',
+      subtitle: 'MI-alapú pénzügyi elemzés a magyar piacra',
+      refresh: 'Piaci adatok frissítése',
+      generateAI: 'MI elemzés generálása',
+      exportPDF: 'PDF jelentés exportálása',
+      generating: 'Generálás...',
+      loading: 'Betöltés...',
+      bet: 'Budapesti Értéktőzsde (BÉT)',
+      macro: 'MNB Makromutatók',
+      ai: 'MI Szektorkockázat Elemzés',
+      chat: 'Kérdezd az MI elemzőt',
+      chatPlaceholder: 'Kérdezz a magyar piacról...',
+      chatHint: 'pl. "Mekkora kockázatot jelent az OTP Bank most?" vagy "Hogyan hat az infláció a magyar kkv-kra?"',
+      thinking: 'Az elemző gondolkodik...',
+      send: 'Küldés',
+      updated: 'Utoljára frissítve',
+      volume: 'Forgalom',
+    }
+  }[lang]
+
+  useEffect(() => {
+    fetchAll()
+  }, [])
+
+  async function fetchAll() {
+    setLoading(true)
+    const [marketRes, macroRes] = await Promise.all([
+      fetch('/api/market'),
+      fetch('/api/macro'),
+    ])
+    const marketJson = await marketRes.json()
+    const macroJson = await macroRes.json()
+    setStocks(marketJson.data || [])
+    setMacro(macroJson.data || [])
+    setLastUpdated(new Date().toLocaleTimeString())
+    setLoading(false)
+  }
+
+  async function fetchAIInsights() {
+    setAiLoading(true)
+    const res = await fetch('/api/ai')
+    const json = await res.json()
+    setInsights(json.data || [])
+    setAiLoading(false)
+  }
+
+  async function sendMessage() {
+    if (!chatInput.trim()) return
+    const userMessage = chatInput.trim()
+    setChatInput('')
+    setChatMessages(prev => [...prev, { role: 'user', content: userMessage }])
+    setChatLoading(true)
+    const res = await fetch('/api/ai/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: userMessage })
+    })
+    const json = await res.json()
+    setChatMessages(prev => [...prev, { role: 'assistant', content: json.response || 'Sorry, I could not get a response.' }])
+    setChatLoading(false)
+  }
+
+  async function exportPDF() {
+    const doc = new jsPDF()
+    const now = new Date().toLocaleString()
+
+    doc.setFillColor(10, 10, 10)
+    doc.rect(0, 0, 210, 40, 'F')
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(20)
+    doc.setFont('helvetica', 'bold')
+    doc.text('HU-Market Intelligence Report', 14, 18)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    doc.text(`Generated: ${now}`, 14, 28)
+    doc.text('Powered by Gordon | Data: NBH / KSH / BET', 14, 35)
+
+    let y = 50
+
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text('NBH Macro Indicators', 14, y)
+    y += 8
+
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'normal')
+    macro.forEach((m) => {
+      doc.setFillColor(245, 245, 245)
+      doc.rect(14, y, 182, 10, 'F')
+      doc.setTextColor(50, 50, 50)
+      doc.text(m.indicator_name, 18, y + 7)
+      doc.setFont('helvetica', 'bold')
+      doc.text(`${m.value}${m.unit === '%' ? '%' : ' ' + m.unit}`, 140, y + 7)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(150, 150, 150)
+      doc.text(`${m.period} · ${m.source}`, 170, y + 7)
+      y += 12
+    })
+
+    y += 8
+
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(14)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Budapest Stock Exchange (BET)', 14, y)
+    y += 8
+
+    doc.setFontSize(10)
+    stocks.forEach((stock) => {
+      doc.setFillColor(245, 245, 245)
+      doc.rect(14, y, 182, 10, 'F')
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 30, 30)
+      doc.text(stock.symbol, 18, y + 7)
+      doc.setFont('helvetica', 'normal')
+      doc.setTextColor(80, 80, 80)
+      doc.text(stock.name, 45, y + 7)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(30, 30, 30)
+      doc.text(`${stock.price.toLocaleString()} HUF`, 130, y + 7)
+      const changeColor = stock.change_percent >= 0 ? [34, 197, 94] as const : [239, 68, 68] as const
+      doc.setTextColor(changeColor[0], changeColor[1], changeColor[2])
+      doc.text(`${stock.change_percent >= 0 ? '+' : ''}${stock.change_percent}%`, 175, y + 7)
+      y += 12
+    })
+
+    y += 8
+
+    if (insights.length > 0) {
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('AI Sector Risk Analysis', 14, y)
+      y += 8
+
+      insights.forEach((insight) => {
+        if (y > 250) {
+          doc.addPage()
+          y = 20
+        }
+        const riskRgb = insight.risk_level === 'HIGH' ? [239, 68, 68] as const : insight.risk_level === 'LOW' ? [34, 197, 94] as const : [245, 158, 11] as const
+        doc.setFillColor(245, 245, 245)
+        doc.rect(14, y, 182, 8, 'F')
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(30, 30, 30)
+        doc.text(insight.sector, 18, y + 6)
+        doc.setTextColor(riskRgb[0], riskRgb[1], riskRgb[2])
+        doc.text(insight.risk_level, 170, y + 6)
+        y += 10
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(80, 80, 80)
+        doc.setFontSize(9)
+        const lines = doc.splitTextToSize(insight.summary, 178)
+        doc.text(lines, 18, y)
+        y += lines.length * 5 + 6
+        doc.setFontSize(10)
+      })
+    }
+
+    doc.setFillColor(10, 10, 10)
+    doc.rect(0, 282, 210, 15, 'F')
+    doc.setTextColor(150, 150, 150)
+    doc.setFontSize(8)
+    doc.text('HU-Market Intelligence Platform | Built with Next.js, Groq AI, Supabase', 14, 290)
+    doc.text('Page 1', 190, 290)
+
+    doc.save(`HU-Market-Report-${new Date().toISOString().split('T')[0]}.pdf`)
+  }
+
+  const riskColor = (level: string) => {
+    if (level === 'HIGH') return '#ef4444'
+    if (level === 'LOW') return '#22c55e'
+    return '#f59e0b'
+  }
+
+  const chartData = stocks.map(s => ({
+    name: s.symbol,
+    price: s.price,
+    change: s.change_percent,
+  }))
+
+  return (
+    <main style={{ minHeight: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'sans-serif', padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '2rem', flexWrap: 'wrap', gap: '1rem' }}>
+        <div>
+          <h1 style={{ fontSize: '28px', fontWeight: '600', margin: '0 0 6px' }}>🇭🇺 {t.title}</h1>
+          <p style={{ color: '#888', margin: 0, fontSize: '14px' }}>{t.subtitle}</p>
+          {lastUpdated && <p style={{ color: '#555', margin: '4px 0 0', fontSize: '12px' }}>{t.updated}: {lastUpdated}</p>}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        <button
+          onClick={() => setLang(lang === 'EN' ? 'HU' : 'EN')}
+          style={{ background: '#1a1a1a', color: '#fff', border: '0.5px solid #333', borderRadius: '8px', padding: '8px 16px', cursor: 'pointer', fontSize: '14px' }}
         >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+          {lang === 'EN' ? '🇭🇺 Magyar' : '🇬🇧 English'}
+        </button>
+      </div>
+
+      {/* Action Buttons */}
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '2rem', flexWrap: 'wrap' }}>
+        <button onClick={fetchAll} style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px' }}>
+          {loading ? t.loading : t.refresh}
+        </button>
+        <button onClick={fetchAIInsights} style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px' }}>
+          {aiLoading ? t.generating : t.generateAI}
+        </button>
+        <button onClick={exportPDF} style={{ background: '#059669', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px' }}>
+          📄 {t.exportPDF}
+        </button>
+      </div>
+
+      {/* Macro Indicators */}
+      {macro.length > 0 && (
+        <>
+          <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>{t.macro}</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+            {macro.map((m) => (
+              <div key={m.indicator_name} style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1rem' }}>
+                <p style={{ color: '#888', fontSize: '11px', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{m.indicator_name}</p>
+                <p style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 4px' }}>{m.value}{m.unit === '%' ? '%' : ''}</p>
+                {m.unit !== '%' && <p style={{ color: '#666', fontSize: '12px', margin: '0 0 4px' }}>{m.unit}</p>}
+                <p style={{ color: '#555', fontSize: '11px', margin: 0 }}>{m.period} · {m.source}</p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Stock Cards */}
+      <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>{t.bet}</h2>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+        {stocks.map((stock) => (
+          <div key={stock.symbol} style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.25rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span style={{ fontWeight: '600', fontSize: '16px' }}>{stock.symbol}</span>
+              <span style={{ color: stock.change_percent >= 0 ? '#22c55e' : '#ef4444', fontSize: '14px', fontWeight: '500' }}>
+                {stock.change_percent >= 0 ? '+' : ''}{stock.change_percent}%
+              </span>
+            </div>
+            <p style={{ color: '#888', fontSize: '12px', margin: '0 0 8px' }}>{stock.name}</p>
+            <p style={{ fontSize: '22px', fontWeight: '600', margin: '0 0 4px' }}>{stock.price.toLocaleString()} HUF</p>
+            <p style={{ color: '#555', fontSize: '12px', margin: 0 }}>{t.volume}: {stock.volume.toLocaleString()}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Bar Chart */}
+      {stocks.length > 0 && (
+        <>
+          <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>Daily Change (%) — All Stocks</h2>
+          <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem', marginBottom: '2rem' }}>
+            <ResponsiveContainer width="100%" height={250}>
+              <BarChart data={chartData}>
+                <XAxis dataKey="name" stroke="#555" tick={{ fill: '#888', fontSize: 12 }} />
+                <YAxis stroke="#555" tick={{ fill: '#888', fontSize: 12 }} />
+                <Tooltip
+                  contentStyle={{ background: '#1a1a1a', border: '0.5px solid #333', borderRadius: '8px', color: '#fff' }}
+                  formatter={(value: number) => [`${value}%`, 'Change']}
+                />
+                <Bar dataKey="change" radius={[4, 4, 0, 0]}>
+                  {chartData.map((entry, index) => (
+                    <Cell key={index} fill={entry.change >= 0 ? '#22c55e' : '#ef4444'} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </>
+      )}
+
+      {/* AI Insights */}
+      {insights.length > 0 && (
+        <>
+          <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>{t.ai}</h2>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
+            {insights.map((insight) => (
+              <div key={insight.sector} style={{ background: '#111', border: `0.5px solid ${riskColor(insight.risk_level)}44`, borderRadius: '12px', padding: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                  <span style={{ fontWeight: '600' }}>{insight.sector}</span>
+                  <span style={{ background: riskColor(insight.risk_level) + '22', color: riskColor(insight.risk_level), fontSize: '11px', fontWeight: '600', padding: '3px 10px', borderRadius: '20px' }}>
+                    {insight.risk_level}
+                  </span>
+                </div>
+                <p style={{ color: '#aaa', fontSize: '13px', lineHeight: '1.6', margin: 0 }}>{insight.summary}</p>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* AI Chat */}
+      <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>💬 {t.chat}</h2>
+      <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
+        <div style={{ minHeight: '200px', maxHeight: '400px', overflowY: 'auto', marginBottom: '1rem' }}>
+          {chatMessages.length === 0 && (
+            <div style={{ color: '#555', fontSize: '14px', textAlign: 'center', paddingTop: '4rem' }}>
+              {t.chatPlaceholder}<br />
+              <span style={{ fontSize: '12px', color: '#444', marginTop: '8px', display: 'block' }}>{t.chatHint}</span>
+            </div>
+          )}
+          {chatMessages.map((msg, i) => (
+            <div key={i} style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div style={{
+                  maxWidth: '80%',
+                  background: msg.role === 'user' ? '#1d4ed8' : '#1a1a1a',
+                  border: msg.role === 'assistant' ? '0.5px solid #333' : 'none',
+                  borderRadius: '12px',
+                  padding: '10px 14px',
+                  fontSize: '14px',
+                  lineHeight: '1.6',
+                  color: '#fff'
+                }}>
+                  {msg.content}
+                </div>
+              </div>
+            </div>
+          ))}
+          {chatLoading && (
+            <div style={{ color: '#555', fontSize: '13px', fontStyle: 'italic' }}>{t.thinking}</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            placeholder={t.chatPlaceholder}
+            style={{ flex: 1, background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
-  );
+          <button
+            onClick={sendMessage}
+            disabled={chatLoading || !chatInput.trim()}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px', opacity: chatLoading || !chatInput.trim() ? 0.5 : 1 }}
+          >
+            {t.send}
+          </button>
+        </div>
+      </div>
+
+    </main>
+  )
 }
