@@ -323,7 +323,7 @@ export default function Home() {
                 <YAxis stroke="#555" tick={{ fill: '#888', fontSize: 12 }} />
                 <Tooltip
                   contentStyle={{ background: '#1a1a1a', border: '0.5px solid #333', borderRadius: '8px', color: '#fff' }}
-                  formatter={(value: number) => [`${value}%`, 'Change']}
+                  formatter={(value) => [`${value}%`, 'Change']}
                 />
                 <Bar dataKey="change" radius={[4, 4, 0, 0]}>
                   {chartData.map((entry, index) => (
