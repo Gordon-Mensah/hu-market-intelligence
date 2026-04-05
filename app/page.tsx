@@ -31,6 +31,17 @@ interface ChatMessage {
   content: string
 }
 
+interface CompanyAnalysis {
+  company: string
+  sector: string
+  healthScore: number
+  riskLevel: string
+  strengths: string[]
+  risks: string[]
+  outlook: string
+  recommendation: string
+}
+
 export default function Home() {
   const [stocks, setStocks] = useState<StockData[]>([])
   const [macro, setMacro] = useState<MacroData[]>([])
@@ -42,6 +53,9 @@ export default function Home() {
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
+  const [companyInput, setCompanyInput] = useState('')
+  const [companyLoading, setCompanyLoading] = useState(false)
+  const [companyAnalysis, setCompanyAnalysis] = useState<CompanyAnalysis | null>(null)
 
   const t = {
     EN: {
@@ -62,6 +76,15 @@ export default function Home() {
       send: 'Send',
       updated: 'Last updated',
       volume: 'Vol',
+      company: 'Company Financial Health Checker',
+      companySubtitle: 'Type any Hungarian company name and AI will analyse its financial health',
+      companyPlaceholder: 'e.g. OTP Bank, MOL, Richter, Wizz Air, Lidl Hungary...',
+      analyse: 'Analyse',
+      analysing: 'Analysing...',
+      strengths: 'Strengths',
+      risks: 'Risks',
+      outlook: 'Market Outlook',
+      healthScore: 'Health Score',
     },
     HU: {
       title: 'Magyar Piaci Intelligencia',
@@ -76,11 +99,20 @@ export default function Home() {
       ai: 'MI Szektorkockázat Elemzés',
       chat: 'Kérdezd az MI elemzőt',
       chatPlaceholder: 'Kérdezz a magyar piacról...',
-      chatHint: 'pl. "Mekkora kockázatot jelent az OTP Bank most?" vagy "Hogyan hat az infláció a magyar kkv-kra?"',
+      chatHint: 'pl. "Mekkora kockázatot jelent az OTP Bank most?"',
       thinking: 'Az elemző gondolkodik...',
       send: 'Küldés',
       updated: 'Utoljára frissítve',
       volume: 'Forgalom',
+      company: 'Vállalati Pénzügyi Egészség Ellenőrző',
+      companySubtitle: 'Írj be bármely magyar vállalat nevét és az MI elemzi a pénzügyi helyzetét',
+      companyPlaceholder: 'pl. OTP Bank, MOL, Richter, Wizz Air...',
+      analyse: 'Elemzés',
+      analysing: 'Elemzés folyamatban...',
+      strengths: 'Erősségek',
+      risks: 'Kockázatok',
+      outlook: 'Piaci Kilátások',
+      healthScore: 'Egészségi Pontszám',
     }
   }[lang]
 
@@ -108,6 +140,20 @@ export default function Home() {
     const json = await res.json()
     setInsights(json.data || [])
     setAiLoading(false)
+  }
+
+  async function analyseCompany() {
+    if (!companyInput.trim()) return
+    setCompanyLoading(true)
+    setCompanyAnalysis(null)
+    const res = await fetch('/api/company', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ company: companyInput.trim() })
+    })
+    const json = await res.json()
+    setCompanyAnalysis(json.data)
+    setCompanyLoading(false)
   }
 
   async function sendMessage() {
@@ -139,7 +185,7 @@ export default function Home() {
     doc.setFontSize(10)
     doc.setFont('helvetica', 'normal')
     doc.text(`Generated: ${now}`, 14, 28)
-    doc.text('Powered by Gordon | Data: NBH / KSH / BET', 14, 35)
+    doc.text('Powered by Groq AI | Data: NBH / KSH / BET', 14, 35)
 
     let y = 50
 
@@ -201,10 +247,7 @@ export default function Home() {
       y += 8
 
       insights.forEach((insight) => {
-        if (y > 250) {
-          doc.addPage()
-          y = 20
-        }
+        if (y > 250) { doc.addPage(); y = 20 }
         const riskRgb = insight.risk_level === 'HIGH' ? [239, 68, 68] as const : insight.risk_level === 'LOW' ? [34, 197, 94] as const : [245, 158, 11] as const
         doc.setFillColor(245, 245, 245)
         doc.rect(14, y, 182, 8, 'F')
@@ -356,8 +399,84 @@ export default function Home() {
         </>
       )}
 
+      {/* Company Health Checker */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '6px' }}> {t.company}</h2>
+        <p style={{ color: '#888', fontSize: '13px', marginBottom: '1rem' }}>{t.companySubtitle}</p>
+        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
+            <input
+              type="text"
+              value={companyInput}
+              onChange={(e) => setCompanyInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && analyseCompany()}
+              placeholder={t.companyPlaceholder}
+              style={{ flex: 1, background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+            />
+            <button
+              onClick={analyseCompany}
+              disabled={companyLoading || !companyInput.trim()}
+              style={{ background: '#0891b2', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px', opacity: companyLoading || !companyInput.trim() ? 0.5 : 1 }}
+            >
+              {companyLoading ? t.analysing : t.analyse}
+            </button>
+          </div>
+
+          {companyAnalysis && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <p style={{ fontSize: '22px', fontWeight: '600', margin: '0 0 4px' }}>{companyAnalysis.company}</p>
+                  <p style={{ color: '#888', fontSize: '14px', margin: 0 }}>{companyAnalysis.sector}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontSize: '36px', fontWeight: '700', margin: 0, color: companyAnalysis.healthScore >= 70 ? '#22c55e' : companyAnalysis.healthScore >= 40 ? '#f59e0b' : '#ef4444' }}>
+                      {companyAnalysis.healthScore}
+                    </p>
+                    <p style={{ color: '#888', fontSize: '11px', margin: 0 }}>{t.healthScore}</p>
+                  </div>
+                  <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ background: riskColor(companyAnalysis.riskLevel) + '22', color: riskColor(companyAnalysis.riskLevel), fontSize: '13px', fontWeight: '600', padding: '6px 14px', borderRadius: '20px' }}>
+                      {companyAnalysis.riskLevel}
+                    </span>
+                    <span style={{ background: companyAnalysis.recommendation === 'BUY' ? '#22c55e22' : companyAnalysis.recommendation === 'AVOID' ? '#ef444422' : '#f59e0b22', color: companyAnalysis.recommendation === 'BUY' ? '#22c55e' : companyAnalysis.recommendation === 'AVOID' ? '#ef4444' : '#f59e0b', fontSize: '13px', fontWeight: '600', padding: '6px 14px', borderRadius: '20px' }}>
+                      {companyAnalysis.recommendation}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ background: '#1a1a1a', borderRadius: '8px', height: '8px', marginBottom: '1.5rem' }}>
+                <div style={{ height: '8px', borderRadius: '8px', width: `${companyAnalysis.healthScore}%`, background: companyAnalysis.healthScore >= 70 ? '#22c55e' : companyAnalysis.healthScore >= 40 ? '#f59e0b' : '#ef4444' }} />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ background: '#0a1a0a', border: '0.5px solid #22c55e33', borderRadius: '10px', padding: '1rem' }}>
+                  <p style={{ color: '#22c55e', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>✓ {t.strengths}</p>
+                  {companyAnalysis.strengths.map((s, i) => (
+                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>• {s}</p>
+                  ))}
+                </div>
+                <div style={{ background: '#1a0a0a', border: '0.5px solid #ef444433', borderRadius: '10px', padding: '1rem' }}>
+                  <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>✗ {t.risks}</p>
+                  {companyAnalysis.risks.map((r, i) => (
+                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>• {r}</p>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ background: '#0a0a1a', border: '0.5px solid #1d4ed833', borderRadius: '10px', padding: '1rem' }}>
+                <p style={{ color: '#60a5fa', fontSize: '13px', fontWeight: '600', margin: '0 0 6px' }}>📈 {t.outlook}</p>
+                <p style={{ color: '#aaa', fontSize: '13px', lineHeight: '1.6', margin: 0 }}>{companyAnalysis.outlook}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {/* AI Chat */}
-      <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>💬 {t.chat}</h2>
+      <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}> {t.chat}</h2>
       <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
         <div style={{ minHeight: '200px', maxHeight: '400px', overflowY: 'auto', marginBottom: '1rem' }}>
           {chatMessages.length === 0 && (
@@ -369,16 +488,7 @@ export default function Home() {
           {chatMessages.map((msg, i) => (
             <div key={i} style={{ marginBottom: '1rem' }}>
               <div style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{
-                  maxWidth: '80%',
-                  background: msg.role === 'user' ? '#1d4ed8' : '#1a1a1a',
-                  border: msg.role === 'assistant' ? '0.5px solid #333' : 'none',
-                  borderRadius: '12px',
-                  padding: '10px 14px',
-                  fontSize: '14px',
-                  lineHeight: '1.6',
-                  color: '#fff'
-                }}>
+                <div style={{ maxWidth: '80%', background: msg.role === 'user' ? '#1d4ed8' : '#1a1a1a', border: msg.role === 'assistant' ? '0.5px solid #333' : 'none', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', lineHeight: '1.6', color: '#fff' }}>
                   {msg.content}
                 </div>
               </div>
