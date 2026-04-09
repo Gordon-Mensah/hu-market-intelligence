@@ -74,12 +74,14 @@ npm run dev
 ## Project Structure
 
 app/
+
 ├── page.tsx              # Landing page
 
 ├── dashboard/
 │   └── page.tsx          # Main dashboard
 
 ├── api/
+
 │   ├── market/           # BET stock data
 
 │   ├── macro/            # NBH macro indicators
