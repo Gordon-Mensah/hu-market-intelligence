@@ -72,3 +72,25 @@ npm run dev
 ---
 
 ## Project Structure
+
+app/
+├── page.tsx              # Landing page
+├── dashboard/
+│   └── page.tsx          # Main dashboard
+├── api/
+│   ├── market/           # BET stock data
+│   ├── macro/            # NBH macro indicators
+│   ├── ai/               # Sector risk analysis
+│   ├── ai/chat/          # AI chat interface
+│   └── company/          # Company health checker
+
+---
+
+## Built By
+
+**John Jerry Gordon-Mensah**
+BSc Computer Science Engineering — Dunaújváros Egyetem
+
+Data Scientist · GenAI Engineer · Financial Analyst · Project Manager
+
+[LinkedIn]([https://linkedin.com](https://www.linkedin.com/in/jayejaye/)) · [GitHub](https://github.com/Gordon-Mensah)
