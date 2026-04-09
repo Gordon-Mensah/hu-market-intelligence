@@ -78,6 +78,7 @@ app/
 ├── page.tsx              # Landing page
 
 ├── dashboard/
+
 │   └── page.tsx          # Main dashboard
 
 ├── api/
