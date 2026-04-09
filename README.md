@@ -75,14 +75,21 @@ npm run dev
 
 app/
 ├── page.tsx              # Landing page
+
 ├── dashboard/
 │   └── page.tsx          # Main dashboard
+
 ├── api/
 │   ├── market/           # BET stock data
+
 │   ├── macro/            # NBH macro indicators
+
 │   ├── ai/               # Sector risk analysis
+
 │   ├── ai/chat/          # AI chat interface
+
 │   └── company/          # Company health checker
+
 ---
 
 ## Built By
