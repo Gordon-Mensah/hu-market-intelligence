@@ -83,8 +83,6 @@ app/
 │   ├── ai/               # Sector risk analysis
 │   ├── ai/chat/          # AI chat interface
 │   └── company/          # Company health checker
-
-
 ---
 
 ## Built By
