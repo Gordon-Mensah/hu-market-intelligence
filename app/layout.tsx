@@ -15,7 +15,7 @@ const geistMono = localFont({
 
 export const metadata: Metadata = {
   title: "Market Intelligence for Hungary",
-  description: "Real-time market data and analytics for Hungarian stocks",
+  description: "Real-time market data and analytics for Hungarian stocks9",
 };
 
 export default function RootLayout({
