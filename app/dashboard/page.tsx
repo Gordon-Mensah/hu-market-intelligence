@@ -42,6 +42,30 @@ interface CompanyAnalysis {
   recommendation: string
 }
 
+interface PortfolioItem {
+  symbol: string
+  name: string
+  percentage: number
+  amount: number
+  sector: string
+}
+
+interface PortfolioAnalysis {
+  overallRisk: string
+  diversificationScore: number
+  sectorExposure: { sector: string; percentage: number; risk: string }[]
+  strengths: string[]
+  weaknesses: string[]
+  recommendations: string[]
+  suggestedChanges?: {
+    increase: string[]
+    decrease: string[]
+    remove: string[]
+    add: string[]
+  }
+  summary: string
+}
+
 export default function Home() {
   const [stocks, setStocks] = useState<StockData[]>([])
   const [macro, setMacro] = useState<MacroData[]>([])
@@ -56,7 +80,20 @@ export default function Home() {
   const [companyInput, setCompanyInput] = useState('')
   const [companyLoading, setCompanyLoading] = useState(false)
   const [companyAnalysis, setCompanyAnalysis] = useState<CompanyAnalysis | null>(null)
-
+  const [portfolio, setPortfolio] = useState<PortfolioItem[]>([
+    { symbol: 'OTP', name: 'OTP Bank Nyrt.', percentage: 30, amount: 0, sector: 'Banking' },
+    { symbol: 'MOL', name: 'MOL Magyar Olaj', percentage: 25, amount: 0, sector: 'Energy' },
+    { symbol: 'RICHTER', name: 'Richter Gedeon', percentage: 20, amount: 0, sector: 'Pharma' },
+    { symbol: 'MTELEKOM', name: 'Magyar Telekom', percentage: 15, amount: 0, sector: 'Telecom' },
+    { symbol: 'OPUS', name: 'Opus Global', percentage: 5, amount: 0, sector: 'Investment' },
+    { symbol: 'AUTOWALLIS', name: 'Autowallis Nyrt.', percentage: 5, amount: 0, sector: 'Automotive' },
+  ])
+  const [totalCapital, setTotalCapital] = useState<number>(1000000)
+  const [portfolioAnalysis, setPortfolioAnalysis] = useState<PortfolioAnalysis | null>(null)
+  const [portfolioLoading, setPortfolioLoading] = useState(false)
+  const [customStockSymbol, setCustomStockSymbol] = useState('')
+  const [customStockName, setCustomStockName] = useState('')
+  const [customStockSector, setCustomStockSector] = useState('')
   const t = {
     EN: {
       title: 'HU-Market Intelligence',
@@ -85,6 +122,24 @@ export default function Home() {
       risks: 'Risks',
       outlook: 'Market Outlook',
       healthScore: 'Health Score',
+      portfolio: 'Portfolio Diversification Planner',
+      portfolioSubtitle: 'Allocate your capital across BET stocks and get AI-powered diversification analysis',
+      capitalLabel: 'Total Capital (HUF)',
+      allocation: 'Allocation',
+      analysePortfolio: 'Analyse Portfolio',
+      analysingPortfolio: 'Analysing Portfolio...',
+      diversificationScore: 'Diversification Score',
+      overallRisk: 'Overall Risk',
+      sectorExposure: 'Sector Exposure',
+      weaknesses: 'Weaknesses',
+      recommendations: 'AI Recommendations',
+      summary: 'Summary',
+      addStock: 'Add Custom Stock',
+      stockSymbol: 'Stock Symbol',
+      stockName: 'Company Name',
+      stockSector: 'Sector',
+      add: 'Add',
+      remove: 'Remove',
     },
     HU: {
       title: 'Magyar Piaci Intelligencia',
@@ -113,6 +168,24 @@ export default function Home() {
       risks: 'Kockázatok',
       outlook: 'Piaci Kilátások',
       healthScore: 'Egészségi Pontszám',
+      portfolio: 'Portfólió Diverzifikációs Tervező',
+      portfolioSubtitle: 'Ossza el tőkéjét a BÉT részvények között és kapjon MI-alapú diverzifikációs analízist',
+      capitalLabel: 'Teljes Tőke (HUF)',
+      allocation: 'Allokáció',
+      analysePortfolio: 'Portfólió Elemzése',
+      analysingPortfolio: 'Portfólió elemzése folyamatban...',
+      diversificationScore: 'Diverzifikációs Pontszám',
+      overallRisk: 'Összesített Kockázat',
+      sectorExposure: 'Szektori Kitettség',
+      weaknesses: 'Gyengeségek',
+      recommendations: 'MI Ajánlások',
+      summary: 'Összefoglalás',
+      addStock: 'Egyéni Részvény Hozzáadása',
+      stockSymbol: 'Részvénytörténet',
+      stockName: 'Vállalat Neve',
+      stockSector: 'Szektor',
+      add: 'Hozzáadás',
+      remove: 'Eltávolítás',
     }
   }[lang]
 
@@ -141,6 +214,46 @@ export default function Home() {
     setInsights(json.data || [])
     setAiLoading(false)
   }
+
+  async function analysePortfolio() {
+    setPortfolioLoading(true)
+    setPortfolioAnalysis(null)
+    const portfolioWithAmounts = portfolio.map(p => ({
+      ...p,
+      amount: Math.round((p.percentage / 100) * totalCapital)
+    }))
+    const res = await fetch('/api/portfolio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ portfolio: portfolioWithAmounts, language: lang })
+    })
+    const json = await res.json()
+    setPortfolioAnalysis(json.data)
+    setPortfolioLoading(false)
+  }
+
+  function addCustomStock() {
+    if (!customStockSymbol.trim() || !customStockName.trim() || !customStockSector.trim()) return
+    setPortfolio(prev => [
+      ...prev,
+      { symbol: customStockSymbol, name: customStockName, percentage: 0, amount: 0, sector: customStockSector }
+    ])
+    setCustomStockSymbol('')
+    setCustomStockName('')
+    setCustomStockSector('')
+  }
+
+  function removeStock(symbol: string) {
+    setPortfolio(prev => prev.filter(p => p.symbol !== symbol))
+  }
+
+  function updatePercentage(symbol: string, value: number) {
+    setPortfolio(prev => prev.map(p =>
+      p.symbol === symbol ? { ...p, percentage: value } : p
+    ))
+  }
+
+  const totalPercentage = portfolio.reduce((sum, p) => sum + p.percentage, 0)
 
   async function analyseCompany() {
     if (!companyInput.trim()) return
@@ -514,6 +627,184 @@ export default function Home() {
           >
             {t.send}
           </button>
+        </div>
+      </div>
+
+      {/* Portfolio Diversification Planner */}
+      <div style={{ marginBottom: '2rem', marginTop: '4rem' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '6px' }}>
+          {t.portfolio}
+        </h2>
+        <p style={{ color: '#888', fontSize: '13px', marginBottom: '1rem' }}>
+          {t.portfolioSubtitle}
+        </p>
+        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
+
+          {/* Capital Input */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <label style={{ color: '#888', fontSize: '13px', display: 'block', marginBottom: '8px' }}>
+              {t.capitalLabel}
+            </label>
+            <input
+              type="number"
+              value={totalCapital}
+              onChange={(e) => setTotalCapital(parseInt(e.target.value) || 0)}
+              style={{ background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none', width: '200px' }}
+            />
+          </div>
+
+          {/* Allocation Sliders */}
+          <div style={{ marginBottom: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+              <span style={{ color: '#888', fontSize: '13px' }}>{t.allocation}</span>
+              <span style={{ color: totalPercentage === 100 ? '#22c55e' : '#ef4444', fontSize: '13px', fontWeight: '600' }}>
+                Total: {totalPercentage}% {totalPercentage !== 100 ? '(must equal 100%)' : ''}
+              </span>
+            </div>
+            {portfolio.map((item) => (
+              <div key={item.symbol} style={{ marginBottom: '12px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
+                  <span style={{ fontSize: '13px', fontWeight: '600' }}>{item.symbol}</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '13px', color: '#888' }}>
+                      {Math.round((item.percentage / 100) * totalCapital).toLocaleString()} HUF
+                    </span>
+                    <span style={{ fontSize: '13px', fontWeight: '600', minWidth: '40px', textAlign: 'right' }}>
+                      {item.percentage}%
+                    </span>
+                  </div>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={item.percentage}
+                    onChange={(e) => updatePercentage(item.symbol, parseInt(e.target.value))}
+                    style={{ flex: 1, accentColor: '#1d4ed8' }}
+                  />
+                  <div style={{ width: '120px', background: '#1a1a1a', borderRadius: '4px', height: '6px' }}>
+                    <div style={{ width: `${item.percentage}%`, background: '#1d4ed8', height: '6px', borderRadius: '4px' }} />
+                  </div>
+                  <button
+                    onClick={() => removeStock(item.symbol)}
+                    style={{ background: '#ef4444', color: '#fff', border: 'none', borderRadius: '6px', padding: '6px 12px', cursor: 'pointer', fontSize: '12px', fontWeight: '600' }}
+                  >
+                    {t.remove}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Add Custom Stock */}
+          <div style={{ marginBottom: '1.5rem', background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '1rem' }}>
+            <h3 style={{ fontSize: '14px', fontWeight: '600', margin: '0 0 12px', color: '#fff' }}>{t.addStock}</h3>
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '10px', flexWrap: 'wrap' }}>
+              <input
+                type="text"
+                placeholder={t.stockSymbol}
+                value={customStockSymbol}
+                onChange={(e) => setCustomStockSymbol(e.target.value.toUpperCase())}
+                style={{ background: '#1a1a1a', border: '0.5px solid #333', borderRadius: '6px', padding: '8px 12px', color: '#fff', fontSize: '13px', outline: 'none', minWidth: '80px' }}
+              />
+              <input
+                type="text"
+                placeholder={t.stockName}
+                value={customStockName}
+                onChange={(e) => setCustomStockName(e.target.value)}
+                style={{ background: '#1a1a1a', border: '0.5px solid #333', borderRadius: '6px', padding: '8px 12px', color: '#fff', fontSize: '13px', outline: 'none', flex: 1, minWidth: '120px' }}
+              />
+              <input
+                type="text"
+                placeholder={t.stockSector}
+                value={customStockSector}
+                onChange={(e) => setCustomStockSector(e.target.value)}
+                style={{ background: '#1a1a1a', border: '0.5px solid #333', borderRadius: '6px', padding: '8px 12px', color: '#fff', fontSize: '13px', outline: 'none', minWidth: '100px' }}
+              />
+              <button
+                onClick={addCustomStock}
+                style={{ background: '#0891b2', color: '#fff', border: 'none', borderRadius: '6px', padding: '8px 16px', cursor: 'pointer', fontSize: '13px' }}
+              >
+                {t.add}
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
+            <button
+              onClick={analysePortfolio}
+              disabled={portfolioLoading || totalPercentage !== 100}
+              style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 24px', cursor: 'pointer', fontSize: '14px', opacity: portfolioLoading || totalPercentage !== 100 ? 0.5 : 1 }}
+            >
+              {portfolioLoading ? t.analysingPortfolio : t.analysePortfolio}
+            </button>
+          </div>
+
+          {portfolioAnalysis && (
+            <div>
+              {/* Score Row */}
+              <div style={{ display: 'flex', gap: '1rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
+                <div style={{ background: '#0a0a0a', border: '0.5px solid #222', borderRadius: '10px', padding: '1rem', flex: 1, minWidth: '140px', textAlign: 'center' }}>
+                  <p style={{ color: '#888', fontSize: '11px', margin: '0 0 6px', textTransform: 'uppercase' }}>{t.diversificationScore}</p>
+                  <p style={{ fontSize: '36px', fontWeight: '700', margin: 0, color: portfolioAnalysis.diversificationScore >= 70 ? '#22c55e' : portfolioAnalysis.diversificationScore >= 40 ? '#f59e0b' : '#ef4444' }}>
+                    {portfolioAnalysis.diversificationScore}
+                  </p>
+                </div>
+                <div style={{ background: '#0a0a0a', border: '0.5px solid #222', borderRadius: '10px', padding: '1rem', flex: 1, minWidth: '140px', textAlign: 'center' }}>
+                  <p style={{ color: '#888', fontSize: '11px', margin: '0 0 6px', textTransform: 'uppercase' }}>{t.overallRisk}</p>
+                  <p style={{ fontSize: '20px', fontWeight: '700', margin: 0, color: riskColor(portfolioAnalysis.overallRisk) }}>
+                    {portfolioAnalysis.overallRisk}
+                  </p>
+                </div>
+              </div>
+
+              {/* Sector Exposure */}
+              <div style={{ marginBottom: '1.5rem' }}>
+                <p style={{ color: '#888', fontSize: '13px', fontWeight: '600', margin: '0 0 10px' }}>{t.sectorExposure}</p>
+                {portfolioAnalysis.sectorExposure.map((s) => (
+                  <div key={s.sector} style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
+                    <span style={{ fontSize: '13px', minWidth: '100px', color: '#aaa' }}>{s.sector}</span>
+                    <div style={{ flex: 1, background: '#1a1a1a', borderRadius: '4px', height: '6px' }}>
+                      <div style={{ width: `${s.percentage}%`, background: riskColor(s.risk), height: '6px', borderRadius: '4px' }} />
+                    </div>
+                    <span style={{ fontSize: '13px', color: '#aaa', minWidth: '40px', textAlign: 'right' }}>{s.percentage}%</span>
+                    <span style={{ fontSize: '11px', color: riskColor(s.risk), minWidth: '50px' }}>{s.risk}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Strengths and Weaknesses */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ background: '#0a1a0a', border: '0.5px solid #22c55e33', borderRadius: '10px', padding: '1rem' }}>
+                  <p style={{ color: '#22c55e', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>{t.strengths}</p>
+                  {portfolioAnalysis.strengths.map((s, i) => (
+                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>+ {s}</p>
+                  ))}
+                </div>
+                <div style={{ background: '#1a0a0a', border: '0.5px solid #ef444433', borderRadius: '10px', padding: '1rem' }}>
+                  <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>{t.weaknesses}</p>
+                  {portfolioAnalysis.weaknesses.map((w, i) => (
+                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>- {w}</p>
+                  ))}
+                </div>
+              </div>
+
+              {/* Recommendations */}
+              <div style={{ background: '#0a0a1a', border: '0.5px solid #1d4ed833', borderRadius: '10px', padding: '1rem', marginBottom: '1rem' }}>
+                <p style={{ color: '#60a5fa', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>{t.recommendations}</p>
+                {portfolioAnalysis.recommendations.map((r, i) => (
+                  <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>{i + 1}. {r}</p>
+                ))}
+              </div>
+
+              {/* Summary */}
+              <div style={{ background: '#111', border: '0.5px solid #333', borderRadius: '10px', padding: '1rem' }}>
+                <p style={{ color: '#fff', fontSize: '13px', lineHeight: '1.7', margin: 0 }}>{portfolioAnalysis.summary}</p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
