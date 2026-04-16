@@ -66,6 +66,18 @@ interface PortfolioAnalysis {
   summary: string
 }
 
+interface User {
+  id: string
+  email: string
+}
+
+interface WatchlistItem {
+  id: string
+  symbol: string
+  name: string
+  sector: string
+}
+
 export default function Home() {
   const [stocks, setStocks] = useState<StockData[]>([])
   const [macro, setMacro] = useState<MacroData[]>([])
@@ -94,6 +106,14 @@ export default function Home() {
   const [customStockSymbol, setCustomStockSymbol] = useState('')
   const [customStockName, setCustomStockName] = useState('')
   const [customStockSector, setCustomStockSector] = useState('')
+  const [user, setUser] = useState<User | null>(null)
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authLoading, setAuthLoading] = useState(false)
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login')
+  const [authMessage, setAuthMessage] = useState('')
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>([])
+
   const t = {
     EN: {
       title: 'HU-Market Intelligence',
@@ -255,6 +275,64 @@ export default function Home() {
 
   const totalPercentage = portfolio.reduce((sum, p) => sum + p.percentage, 0)
 
+  async function handleAuth() {
+    setAuthLoading(true)
+    setAuthMessage('')
+    const res = await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: authEmail, password: authPassword, action: authMode })
+    })
+    const json = await res.json()
+    if (json.success) {
+      if (authMode === 'signup') {
+        setAuthMessage('Account created! Please check your email to confirm.')
+      } else {
+        setUser({ id: json.data.user.id, email: json.data.user.email })
+        fetchWatchlist(json.data.user.id)
+      }
+    } else {
+      setAuthMessage(json.error || 'Something went wrong')
+    }
+    setAuthLoading(false)
+  }
+
+  async function handleLogout() {
+    await fetch('/api/auth', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'logout' })
+    })
+    setUser(null)
+    setWatchlist([])
+  }
+
+  async function fetchWatchlist(userId: string) {
+    const res = await fetch(`/api/watchlist?user_id=${userId}`)
+    const json = await res.json()
+    setWatchlist(json.data || [])
+  }
+
+  async function addToWatchlist(stock: StockData) {
+    if (!user) return
+    const res = await fetch('/api/watchlist', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: user.id, symbol: stock.symbol, name: stock.name, sector: stock.sector })
+    })
+    const json = await res.json()
+    if (json.success) fetchWatchlist(user.id)
+  }
+
+  async function removeFromWatchlist(id: string) {
+    await fetch('/api/watchlist', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    })
+    if (user) fetchWatchlist(user.id)
+  }
+
   async function analyseCompany() {
     if (!companyInput.trim()) return
     setCompanyLoading(true)
@@ -402,6 +480,8 @@ export default function Home() {
     change: s.change_percent,
   }))
 
+  const isInWatchlist = (symbol: string) => watchlist.some(w => w.symbol === symbol)
+
   return (
     <main style={{ minHeight: '100vh', background: '#0a0a0a', color: '#fff', fontFamily: 'sans-serif', padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
 
@@ -463,7 +543,15 @@ export default function Home() {
             </div>
             <p style={{ color: '#888', fontSize: '12px', margin: '0 0 8px' }}>{stock.name}</p>
             <p style={{ fontSize: '22px', fontWeight: '600', margin: '0 0 4px' }}>{stock.price.toLocaleString()} HUF</p>
-            <p style={{ color: '#555', fontSize: '12px', margin: 0 }}>{t.volume}: {stock.volume.toLocaleString()}</p>
+            <p style={{ color: '#555', fontSize: '12px', margin: '0 0 8px' }}>{t.volume}: {stock.volume.toLocaleString()}</p>
+            {user && (
+              <button
+                onClick={() => isInWatchlist(stock.symbol) ? removeFromWatchlist(watchlist.find(w => w.symbol === stock.symbol)!.id) : addToWatchlist(stock)}
+                style={{ background: isInWatchlist(stock.symbol) ? '#1a1a1a' : '#1d4ed822', color: isInWatchlist(stock.symbol) ? '#666' : '#60a5fa', border: `0.5px solid ${isInWatchlist(stock.symbol) ? '#333' : '#1d4ed844'}`, borderRadius: '6px', padding: '4px 10px', cursor: 'pointer', fontSize: '11px', width: '100%' }}
+              >
+                {isInWatchlist(stock.symbol) ? 'Remove from Watchlist' : '+ Add to Watchlist'}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -512,125 +600,7 @@ export default function Home() {
         </>
       )}
 
-      {/* Company Health Checker */}
-      <div style={{ marginBottom: '2rem' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '6px' }}> {t.company}</h2>
-        <p style={{ color: '#888', fontSize: '13px', marginBottom: '1rem' }}>{t.companySubtitle}</p>
-        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
-          <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
-            <input
-              type="text"
-              value={companyInput}
-              onChange={(e) => setCompanyInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && analyseCompany()}
-              placeholder={t.companyPlaceholder}
-              style={{ flex: 1, background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
-            />
-            <button
-              onClick={analyseCompany}
-              disabled={companyLoading || !companyInput.trim()}
-              style={{ background: '#0891b2', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px', opacity: companyLoading || !companyInput.trim() ? 0.5 : 1 }}
-            >
-              {companyLoading ? t.analysing : t.analyse}
-            </button>
-          </div>
-
-          {companyAnalysis && (
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-                <div>
-                  <p style={{ fontSize: '22px', fontWeight: '600', margin: '0 0 4px' }}>{companyAnalysis.company}</p>
-                  <p style={{ color: '#888', fontSize: '14px', margin: 0 }}>{companyAnalysis.sector}</p>
-                </div>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-                  <div style={{ textAlign: 'center' }}>
-                    <p style={{ fontSize: '36px', fontWeight: '700', margin: 0, color: companyAnalysis.healthScore >= 70 ? '#22c55e' : companyAnalysis.healthScore >= 40 ? '#f59e0b' : '#ef4444' }}>
-                      {companyAnalysis.healthScore}
-                    </p>
-                    <p style={{ color: '#888', fontSize: '11px', margin: 0 }}>{t.healthScore}</p>
-                  </div>
-                  <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                    <span style={{ background: riskColor(companyAnalysis.riskLevel) + '22', color: riskColor(companyAnalysis.riskLevel), fontSize: '13px', fontWeight: '600', padding: '6px 14px', borderRadius: '20px' }}>
-                      {companyAnalysis.riskLevel}
-                    </span>
-                    <span style={{ background: companyAnalysis.recommendation === 'BUY' ? '#22c55e22' : companyAnalysis.recommendation === 'AVOID' ? '#ef444422' : '#f59e0b22', color: companyAnalysis.recommendation === 'BUY' ? '#22c55e' : companyAnalysis.recommendation === 'AVOID' ? '#ef4444' : '#f59e0b', fontSize: '13px', fontWeight: '600', padding: '6px 14px', borderRadius: '20px' }}>
-                      {companyAnalysis.recommendation}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div style={{ background: '#1a1a1a', borderRadius: '8px', height: '8px', marginBottom: '1.5rem' }}>
-                <div style={{ height: '8px', borderRadius: '8px', width: `${companyAnalysis.healthScore}%`, background: companyAnalysis.healthScore >= 70 ? '#22c55e' : companyAnalysis.healthScore >= 40 ? '#f59e0b' : '#ef4444' }} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
-                <div style={{ background: '#0a1a0a', border: '0.5px solid #22c55e33', borderRadius: '10px', padding: '1rem' }}>
-                  <p style={{ color: '#22c55e', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>✓ {t.strengths}</p>
-                  {companyAnalysis.strengths.map((s, i) => (
-                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>• {s}</p>
-                  ))}
-                </div>
-                <div style={{ background: '#1a0a0a', border: '0.5px solid #ef444433', borderRadius: '10px', padding: '1rem' }}>
-                  <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>✗ {t.risks}</p>
-                  {companyAnalysis.risks.map((r, i) => (
-                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>• {r}</p>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ background: '#0a0a1a', border: '0.5px solid #1d4ed833', borderRadius: '10px', padding: '1rem' }}>
-                <p style={{ color: '#60a5fa', fontSize: '13px', fontWeight: '600', margin: '0 0 6px' }}>📈 {t.outlook}</p>
-                <p style={{ color: '#aaa', fontSize: '13px', lineHeight: '1.6', margin: 0 }}>{companyAnalysis.outlook}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* AI Chat */}
-      <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}> {t.chat}</h2>
-      <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
-        <div style={{ minHeight: '200px', maxHeight: '400px', overflowY: 'auto', marginBottom: '1rem' }}>
-          {chatMessages.length === 0 && (
-            <div style={{ color: '#555', fontSize: '14px', textAlign: 'center', paddingTop: '4rem' }}>
-              {t.chatPlaceholder}<br />
-              <span style={{ fontSize: '12px', color: '#444', marginTop: '8px', display: 'block' }}>{t.chatHint}</span>
-            </div>
-          )}
-          {chatMessages.map((msg, i) => (
-            <div key={i} style={{ marginBottom: '1rem' }}>
-              <div style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
-                <div style={{ maxWidth: '80%', background: msg.role === 'user' ? '#1d4ed8' : '#1a1a1a', border: msg.role === 'assistant' ? '0.5px solid #333' : 'none', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', lineHeight: '1.6', color: '#fff' }}>
-                  {msg.content}
-                </div>
-              </div>
-            </div>
-          ))}
-          {chatLoading && (
-            <div style={{ color: '#555', fontSize: '13px', fontStyle: 'italic' }}>{t.thinking}</div>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: '10px' }}>
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
-            placeholder={t.chatPlaceholder}
-            style={{ flex: 1, background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
-          />
-          <button
-            onClick={sendMessage}
-            disabled={chatLoading || !chatInput.trim()}
-            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px', opacity: chatLoading || !chatInput.trim() ? 0.5 : 1 }}
-          >
-            {t.send}
-          </button>
-        </div>
-      </div>
-
-      {/* Portfolio Diversification Planner */}
+      {/* Portfolio Planner */}
       <div style={{ marginBottom: '2rem', marginTop: '4rem' }}>
         <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '6px' }}>
           {t.portfolio}
@@ -805,6 +775,209 @@ export default function Home() {
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Company Health Checker */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '6px' }}>{t.company}</h2>
+        <p style={{ color: '#888', fontSize: '13px', marginBottom: '1rem' }}>{t.companySubtitle}</p>
+        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
+            <input
+              type="text"
+              value={companyInput}
+              onChange={(e) => setCompanyInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && analyseCompany()}
+              placeholder={t.companyPlaceholder}
+              style={{ flex: 1, background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+            />
+            <button
+              onClick={analyseCompany}
+              disabled={companyLoading || !companyInput.trim()}
+              style={{ background: '#0891b2', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px', opacity: companyLoading || !companyInput.trim() ? 0.5 : 1 }}
+            >
+              {companyLoading ? t.analysing : t.analyse}
+            </button>
+          </div>
+          {companyAnalysis && (
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+                <div>
+                  <p style={{ fontSize: '22px', fontWeight: '600', margin: '0 0 4px' }}>{companyAnalysis.company}</p>
+                  <p style={{ color: '#888', fontSize: '14px', margin: 0 }}>{companyAnalysis.sector}</p>
+                </div>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
+                  <div style={{ textAlign: 'center' }}>
+                    <p style={{ fontSize: '36px', fontWeight: '700', margin: 0, color: companyAnalysis.healthScore >= 70 ? '#22c55e' : companyAnalysis.healthScore >= 40 ? '#f59e0b' : '#ef4444' }}>
+                      {companyAnalysis.healthScore}
+                    </p>
+                    <p style={{ color: '#888', fontSize: '11px', margin: 0 }}>{t.healthScore}</p>
+                  </div>
+                  <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <span style={{ background: riskColor(companyAnalysis.riskLevel) + '22', color: riskColor(companyAnalysis.riskLevel), fontSize: '13px', fontWeight: '600', padding: '6px 14px', borderRadius: '20px' }}>
+                      {companyAnalysis.riskLevel}
+                    </span>
+                    <span style={{ background: companyAnalysis.recommendation === 'BUY' ? '#22c55e22' : companyAnalysis.recommendation === 'AVOID' ? '#ef444422' : '#f59e0b22', color: companyAnalysis.recommendation === 'BUY' ? '#22c55e' : companyAnalysis.recommendation === 'AVOID' ? '#ef4444' : '#f59e0b', fontSize: '13px', fontWeight: '600', padding: '6px 14px', borderRadius: '20px' }}>
+                      {companyAnalysis.recommendation}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <div style={{ background: '#1a1a1a', borderRadius: '8px', height: '8px', marginBottom: '1.5rem' }}>
+                <div style={{ height: '8px', borderRadius: '8px', width: `${companyAnalysis.healthScore}%`, background: companyAnalysis.healthScore >= 70 ? '#22c55e' : companyAnalysis.healthScore >= 40 ? '#f59e0b' : '#ef4444' }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ background: '#0a1a0a', border: '0.5px solid #22c55e33', borderRadius: '10px', padding: '1rem' }}>
+                  <p style={{ color: '#22c55e', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>✓ {t.strengths}</p>
+                  {companyAnalysis.strengths.map((s, i) => (
+                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>• {s}</p>
+                  ))}
+                </div>
+                <div style={{ background: '#1a0a0a', border: '0.5px solid #ef444433', borderRadius: '10px', padding: '1rem' }}>
+                  <p style={{ color: '#ef4444', fontSize: '13px', fontWeight: '600', margin: '0 0 8px' }}>✗ {t.risks}</p>
+                  {companyAnalysis.risks.map((r, i) => (
+                    <p key={i} style={{ color: '#aaa', fontSize: '13px', margin: '0 0 6px', lineHeight: '1.5' }}>• {r}</p>
+                  ))}
+                </div>
+              </div>
+              <div style={{ background: '#0a0a1a', border: '0.5px solid #1d4ed833', borderRadius: '10px', padding: '1rem' }}>
+                <p style={{ color: '#60a5fa', fontSize: '13px', fontWeight: '600', margin: '0 0 6px' }}>📈 {t.outlook}</p>
+                <p style={{ color: '#aaa', fontSize: '13px', lineHeight: '1.6', margin: 0 }}>{companyAnalysis.outlook}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Auth + Watchlist */}
+      <div style={{ marginBottom: '2rem' }}>
+        <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>
+          {user ? `Your Watchlist` : 'Sign In to Save Your Watchlist'}
+        </h2>
+        <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
+          {!user ? (
+            <div>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '1rem', flexWrap: 'wrap' }}>
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  placeholder="Email address"
+                  style={{ flex: 1, minWidth: '200px', background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                />
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  placeholder="Password"
+                  style={{ flex: 1, minWidth: '200px', background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+                <button
+                  onClick={handleAuth}
+                  disabled={authLoading}
+                  style={{ background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px', opacity: authLoading ? 0.5 : 1 }}
+                >
+                  {authLoading ? 'Please wait...' : authMode === 'login' ? 'Sign In' : 'Create Account'}
+                </button>
+                <button
+                  onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                  style={{ background: 'transparent', color: '#888', border: 'none', cursor: 'pointer', fontSize: '14px' }}
+                >
+                  {authMode === 'login' ? 'No account? Sign up' : 'Have an account? Sign in'}
+                </button>
+              </div>
+              {authMessage && (
+                <p style={{ color: '#f59e0b', fontSize: '13px', marginTop: '10px' }}>{authMessage}</p>
+              )}
+            </div>
+          ) : (
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                <p style={{ color: '#888', fontSize: '13px', margin: 0 }}>
+                  {watchlist.length === 0 ? 'No stocks in your watchlist yet. Click "+ Add to Watchlist" on any stock card above.' : `${watchlist.length} stock${watchlist.length > 1 ? 's' : ''} tracked`}
+                </p>
+                <button
+                  onClick={handleLogout}
+                  style={{ background: 'transparent', color: '#666', border: '0.5px solid #333', borderRadius: '8px', padding: '6px 14px', cursor: 'pointer', fontSize: '13px' }}
+                >
+                  Sign Out
+                </button>
+              </div>
+              {watchlist.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px' }}>
+                  {watchlist.map((item) => {
+                    const liveStock = stocks.find(s => s.symbol === item.symbol)
+                    return (
+                      <div key={item.id} style={{ background: '#0a0a0a', border: '0.5px solid #222', borderRadius: '10px', padding: '1rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                          <span style={{ fontWeight: '600', fontSize: '14px' }}>{item.symbol}</span>
+                          {liveStock && (
+                            <span style={{ color: liveStock.change_percent >= 0 ? '#22c55e' : '#ef4444', fontSize: '12px' }}>
+                              {liveStock.change_percent >= 0 ? '+' : ''}{liveStock.change_percent}%
+                            </span>
+                          )}
+                        </div>
+                        {liveStock && (
+                          <p style={{ fontSize: '16px', fontWeight: '600', margin: '0 0 6px' }}>{liveStock.price.toLocaleString()} HUF</p>
+                        )}
+                        <button
+                          onClick={() => removeFromWatchlist(item.id)}
+                          style={{ background: 'transparent', color: '#555', border: 'none', cursor: 'pointer', fontSize: '11px', padding: 0 }}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* AI Chat */}
+      <h2 style={{ fontSize: '18px', fontWeight: '500', marginBottom: '1rem' }}>{t.chat}</h2>
+      <div style={{ background: '#111', border: '0.5px solid #222', borderRadius: '12px', padding: '1.5rem' }}>
+        <div style={{ minHeight: '200px', maxHeight: '400px', overflowY: 'auto', marginBottom: '1rem' }}>
+          {chatMessages.length === 0 && (
+            <div style={{ color: '#555', fontSize: '14px', textAlign: 'center', paddingTop: '4rem' }}>
+              {t.chatPlaceholder}<br />
+              <span style={{ fontSize: '12px', color: '#444', marginTop: '8px', display: 'block' }}>{t.chatHint}</span>
+            </div>
+          )}
+          {chatMessages.map((msg, i) => (
+            <div key={i} style={{ marginBottom: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                <div style={{ maxWidth: '80%', background: msg.role === 'user' ? '#1d4ed8' : '#1a1a1a', border: msg.role === 'assistant' ? '0.5px solid #333' : 'none', borderRadius: '12px', padding: '10px 14px', fontSize: '14px', lineHeight: '1.6', color: '#fff' }}>
+                  {msg.content}
+                </div>
+              </div>
+            </div>
+          ))}
+          {chatLoading && (
+            <div style={{ color: '#555', fontSize: '13px', fontStyle: 'italic' }}>{t.thinking}</div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="text"
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+            placeholder={t.chatPlaceholder}
+            style={{ flex: 1, background: '#0a0a0a', border: '0.5px solid #333', borderRadius: '8px', padding: '10px 14px', color: '#fff', fontSize: '14px', outline: 'none' }}
+          />
+          <button
+            onClick={sendMessage}
+            disabled={chatLoading || !chatInput.trim()}
+            style={{ background: '#7c3aed', color: '#fff', border: 'none', borderRadius: '8px', padding: '10px 20px', cursor: 'pointer', fontSize: '14px', opacity: chatLoading || !chatInput.trim() ? 0.5 : 1 }}
+          >
+            {t.send}
+          </button>
         </div>
       </div>
 
